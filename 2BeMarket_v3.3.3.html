@@ -8202,6 +8202,13 @@ graph TD
 <td style="text-align:left">Класичні VM, AWS GuardDuty</td>
 <td style="text-align:left"><strong>(Elite Dark Horse):</strong> Рівень захисту FinTech та спецслужб. Апаратне шифрування RAM та перехоплення викликів ядра (Ghost Sharding). <em>Trade-off:</em> екстремально високий поріг входу для інженерів платформи.</td>
 </tr>
+<tr>
+<td style="text-align:left"><strong>AI Рекомендації та Anti-Fraud</strong></td>
+<td style="text-align:left">Semantic Search &amp; Knowledge Graph</td>
+<td style="text-align:left"><strong>TigerGraph</strong> (MPP Graph) + <strong>Qdrant</strong> (Vector DB)</td>
+<td style="text-align:left">Neo4j, Amazon Neptune, Pinecone</td>
+<td style="text-align:left"><strong>(Elite AI Tier):</strong> Neo4j має ліміти при горизонтальному шардуванні. TigerGraph забезпечує паралельні обчислення (MPP) для виявлення Fraud Rings у реальному часі. Qdrant зберігає нейромережеві ембеддінги (Embeddings) для мультимодального AI-пошуку (пошук по фото) та персоналізації рівня TikTok.</td>
+</tr>
 </tbody>
 </table>
 </hr></div>
@@ -9235,27 +9242,26 @@ graph TD
 </li>
 </ul>
 <hr/>
-<h3 id="D.3.-%D0%A1%D1%85%D0%B5%D0%BC%D0%B8-%D0%B1%D0%B0%D0%B7-%D0%B4%D0%B0%D0%BD%D0%B8%D1%85-(Data-Models-&amp;-Entities)">D.3. Схеми баз даних (Data Models &amp; Entities)<a class="anchor-link" href="#D.3.-%D0%A1%D1%85%D0%B5%D0%BC%D0%B8-%D0%B1%D0%B0%D0%B7-%D0%B4%D0%B0%D0%BD%D0%B8%D1%85-(Data-Models-&amp;-Entities)">¶</a></h3><p>Через принцип Polyglot Persistence кожна сутність зберігається в оптимізованій для неї базі даних. Нижче наведено концептуальну ER-схему (Entity-Relationship) для 4-х ключових сутностей та опис їхніх структур.</p>
+<h3 id="D.3.-%D0%A1%D1%85%D0%B5%D0%BC%D0%B8-%D0%B1%D0%B0%D0%B7-%D0%B4%D0%B0%D0%BD%D0%B8%D1%85-(Data-Models-&amp;-Entities)">D.3. Схеми баз даних (Data Models &amp; Entities)<a class="anchor-link" href="#D.3.-%D0%A1%D1%85%D0%B5%D0%BC%D0%B8-%D0%B1%D0%B0%D0%B7-%D0%B4%D0%B0%D0%BD%D0%B8%D1%85-(Data-Models-&amp;-Entities)">¶</a></h3><p>Через принцип Polyglot Persistence кожна сутність зберігається в оптимізованій для неї базі даних. Нижче наведено концептуальну ER-схему (Entity-Relationship) для ключових сутностей платформи, включаючи AI-вектори та Knowledge Graph.</p>
 <div class="jp-Mermaid"><pre class="mermaid">
 erDiagram
     USERS ||--o{ ORDERS : "places"
-	USERS ||--|| CARTS : "owns"
-    USERS ||--o{ REVIEWS : "writes"
+    USERS ||--|| CARTS : "owns"
     ORDERS ||--|{ ORDER_ITEMS : "contains"
     PRODUCTS ||--o{ ORDER_ITEMS : "included_in"
-    PRODUCTS ||--o{ REVIEWS : "receives"
+    PRODUCTS ||--o| PRODUCT_EMBEDDINGS : "vectorized_as"
+    USERS }|--|{ KNOWLEDGE_GRAPH : "behavior_links"
+    PRODUCTS }|--|{ KNOWLEDGE_GRAPH : "recommendation_links"
 
     USERS {
         uuid id PK
         string email UK
-        string password_hash
         jsonb preferences
         timestamp created_at
     }
 
     PRODUCTS {
         uuid id PK
-        uuid merchant_id FK
         string name
         decimal price
         int stock_quantity
@@ -9270,32 +9276,59 @@ erDiagram
         timestamp created_at
     }
 
-    CARTS {
+    ORDER_ITEMS {
         uuid id PK
-        uuid user_id FK "TTL-indexed"
+        uuid order_id FK
+        uuid product_id FK
+        int quantity
+    }
+
+    CARTS {
+        uuid user_id PK, FK "TTL-indexed"
         jsonb items "CRDT Vector"
-        timestamp updated_at
+    }
+
+    PRODUCT_EMBEDDINGS {
+        uuid product_id PK, FK
+        vector embeddings_1536d
+        jsonb metadata
+    }
+
+    KNOWLEDGE_GRAPH {
+        string node_type
+        string edge_type
+        float ai_weight
     }
 </pre></div><p><strong>Опис структур даних та вибір сховища:</strong></p>
 <ol>
 <li><strong>Сутність <code>USERS</code> (CockroachDB):</strong><ul>
-<li><em>Тип:</em> Реляційна (сувора консистентність).</li>
+<li><em>Тип:</em> Реляційна (Distributed NewSQL).</li>
 <li><em>Особливості:</em> Поля з персональними даними (PII) зберігаються в зашифрованому вигляді. Поле <code>preferences</code> (JSONB) дозволяє гнучко додавати налаштування без зміни схеми (ALTER TABLE).</li>
 </ul>
 </li>
 <li><strong>Сутність <code>PRODUCTS</code> (ElasticSearch + MongoDB):</strong><ul>
 <li><em>Тип:</em> Документо-орієнтована / Пошуковий індекс.</li>
-<li><em>Особливості:</em> Оскільки товари (смартфони, одяг) мають різні набори характеристик, реляційна таблиця створила б "розріджену" матрицю (Sparse Matrix). JSON-документи ідеально підходять для динамічного поля <code>attributes</code>.</li>
+<li><em>Особливості:</em> Оскільки товари (смартфони, одяг) мають різні набори характеристик, реляційна таблиця створила б "розріджену" матрицю (Sparse Matrix). MongoDB ідеально зберігає динамічний JSON, а ElasticSearch індексує його для текстового пошуку.</li>
 </ul>
 </li>
 <li><strong>Сутність <code>CARTS</code> (Redis Enterprise):</strong><ul>
-<li><em>Тип:</em> Key-Value (In-Memory або високошвидкісний диск).</li>
-<li><em>Особливості:</em> Кошик використовує структуру CRDT (Conflict-free Replicated Data Type) в полі <code>items</code> для уникнення втрати даних при одночасному додаванні товарів з Web-порталу та <strong>мобільного застосунку</strong>. Дані мають автоматичний TTL (Time-To-Live) на 30 днів для очищення "покинутих" кошиків.</li>
+<li><em>Тип:</em> Key-Value (In-Memory).</li>
+<li><em>Особливості:</em> Кошик використовує структуру CRDT (Conflict-free Replicated Data Type) в полі <code>items</code> для уникнення втрати даних при одночасному додаванні товарів з Web-порталу та <strong>мобільного застосунку</strong>. Дані мають автоматичний TTL (Time-To-Live) на 30 днів.</li>
 </ul>
 </li>
 <li><strong>Сутність <code>ORDERS</code> (CockroachDB):</strong><ul>
-<li><em>Тип:</em> Distributed NewSQL.</li>
-<li><em>Особливості:</em> Фінансове серце системи. Всі операції над цією таблицею є ACID-транзакціями. Статус (<code>PENDING</code>, <code>PAID</code>, <code>SHIPPED</code>) змінюється виключно через брокер повідомлень (Kafka) в рамках патерну Saga.</li>
+<li><em>Тип:</em> Реляційна (сувора ACID-консистентність).</li>
+<li><em>Особливості:</em> Фінансове серце системи. Статус (<code>PENDING</code>, <code>PAID</code>, <code>SHIPPED</code>) змінюється виключно через брокер повідомлень (Kafka) в рамках патерну Saga.</li>
+</ul>
+</li>
+<li><strong>Сутність <code>PRODUCT_EMBEDDINGS</code> (Qdrant - Vector DB):</strong><ul>
+<li><em>Тип:</em> Векторна база даних (High-dimensional Vector Index).</li>
+<li><em>Особливості:</em> Зберігає 1536-вимірні вектори (Embeddings), згенеровані нейромережами на основі фотографій та описів товарів. Забезпечує роботу мультимодального AI-пошуку (наприклад, Neural Search: "знайти кросівки як на цьому завантаженому фото").</li>
+</ul>
+</li>
+<li><strong>Сутність <code>KNOWLEDGE_GRAPH</code> (TigerGraph - MPP Graph DB):</strong><ul>
+<li><em>Тип:</em> Massively Parallel Graph.</li>
+<li><em>Особливості:</em> Зберігає не самі об'єкти, а мільярди зв'язків (Edges) між користувачами, IP-адресами, пристроями та товарами. Використовується в реальному часі для двох AI-задач: виявлення шахрайських мереж (Fraud Rings) та розрахунку надглибоких персоналізованих рекомендацій рівня TikTok.</li>
 </ul>
 </li>
 </ol>
