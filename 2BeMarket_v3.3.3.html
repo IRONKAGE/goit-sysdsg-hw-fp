@@ -8112,6 +8112,98 @@ graph TD
 <li><strong>AI/ML Екосистема та Когнітивний Пошук (GenAI Core):</strong> Оскільки <strong>2BeMarket</strong> об'єднує продавців і покупців з різних мовних середовищ, платформа використовує асинхронний AI-пайплайн (Kafka + LLM). Коли продавець створює товар, система автоматично генерує та кешує семантично правильні переклади описів цільовими мовами регіонів. Крім того, на зміну класичному лексичному пошуку (ElasticSearch) у <strong>мобільний застосунок</strong> інтегровано Shopping Copilot на базі RAG (Retrieval-Augmented Generation). Це дозволяє покупцям здійснювати пошук природною мовою (наприклад: <em>"знайди теплі зимові черевики, не шкіряні, до 150 франків"</em>). Базовий стек розширено Векторною БД (Milvus / Qdrant) для семантичного пошуку та Feature Store для мілісекундної генерації персоналізованих рекомендацій.</li>
 <li><strong>Глобальний шар Ідентифікації (Global CIAM) та Захист від SPOF:</strong> Оскільки інфраструктура розкидана по 4-х макрорегіонах, платформа використовує єдиний Federated Identity Provider (наприклад, Auth0 / PingIdentity). Щоб уникнути створення Єдиної точки відмови (Single Point of Failure), система покладається на <strong>Stateless-автентифікацію</strong>. При логіні користувача генерується асиметрично підписаний JWT-токен. Усі регіональні API Gateways агресивно кешують публічні ключі (JWKS). Це дозволяє кластерам AWS або GCP миттєво верифікувати токени користувачів локально, без мережевих запитів до провайдера. Навіть якщо глобальний Auth0 повністю впаде, мільйони вже авторизованих користувачів зможуть продовжувати покупки, що гарантує виживання платформи під час інфраструктурних колапсів третіх сторін.</li>
 </ol>
+<hr/>
+<h3 id="2.4.-%D0%97%D0%B2%D0%B5%D0%B4%D0%B5%D0%BD%D0%B0-%D1%82%D0%B0%D0%B1%D0%BB%D0%B8%D1%86%D1%8F-%D1%82%D0%B5%D1%85%D0%BD%D0%BE%D0%BB%D0%BE%D0%B3%D1%96%D1%87%D0%BD%D0%BE%D0%B3%D0%BE-%D1%81%D1%82%D0%B5%D0%BA%D1%83-(Tech-Stack-Justification)">2.4. Зведена таблиця технологічного стеку (Tech Stack Justification)<a class="anchor-link" href="#2.4.-%D0%97%D0%B2%D0%B5%D0%B4%D0%B5%D0%BD%D0%B0-%D1%82%D0%B0%D0%B1%D0%BB%D0%B8%D1%86%D1%8F-%D1%82%D0%B5%D1%85%D0%BD%D0%BE%D0%BB%D0%BE%D0%B3%D1%96%D1%87%D0%BD%D0%BE%D0%B3%D0%BE-%D1%81%D1%82%D0%B5%D0%BA%D1%83-(Tech-Stack-Justification)">¶</a></h3><p>Для реалізації глобальної архітектури було обрано збалансований стек, що поєднує перевірені часом стандарти ("Boring Tech") з інноваційними рішеннями для специфічних вузьких місць ("Dark Horses"). Кожне рішення базується на строгих вимогах щодо масштабованості, консистентності (CAP-теорема) та відмовостійкості платформи.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left"><strong>Категорія</strong></th>
+<th style="text-align:left"><strong>Компонент системи</strong></th>
+<th style="text-align:left"><strong>Обрана технологія / Патерн</strong></th>
+<th style="text-align:left"><strong>Альтернативи (Відхилено)</strong></th>
+<th style="text-align:left"><strong>Обґрунтування (Trade-offs &amp; Justification)</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>Edge Security &amp; Доступність</strong></td>
+<td style="text-align:left">Edge Routing &amp; WAF</td>
+<td style="text-align:left"><strong>Cloudflare</strong> (WAF + Workers)</td>
+<td style="text-align:left">AWS CloudFront, Fastly</td>
+<td style="text-align:left"><strong>(Industry Standard):</strong> Найкращий захист від L7-DDoS. Edge Workers дозволяють реалізувати інноваційний "Virtual Waiting Room", відсікаючи сміттєвий трафік ще до бекенду.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Fault Tolerance &amp; Балансування</strong></td>
+<td style="text-align:left">Global Load Balancer</td>
+<td style="text-align:left"><strong>GCP Cloud Load Balancing</strong></td>
+<td style="text-align:left">AWS Route 53</td>
+<td style="text-align:left"><strong>(Boring Tech):</strong> Надійне та "нудне" рішення. Підтримує Anycast IP (одна адреса для всього світу), забезпечуючи мінімальну затримку маршрутизації між континентами.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Тип сховища (SQL)</strong></td>
+<td style="text-align:left">Транзакційне ядро</td>
+<td style="text-align:left"><strong>CockroachDB</strong> (Distributed NewSQL)</td>
+<td style="text-align:left">PostgreSQL, AWS Aurora</td>
+<td style="text-align:left"><strong>(Dark Horse):</strong> Замість класичного PostgreSQL (який важко глобально шардувати), цей NewSQL дає трансконтинентальні ACID-гарантії. <em>Trade-off:</em> Висока складність (алгоритм Raft), але абсолютний захист від Split-Brain.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Тип сховища (NoSQL)</strong></td>
+<td style="text-align:left">Каталог товарів (Пошук)</td>
+<td style="text-align:left"><strong>ElasticSearch</strong> (Search) + <strong>MongoDB</strong> (Document)</td>
+<td style="text-align:left">Solr, Couchbase, Cassandra</td>
+<td style="text-align:left"><strong>(Proven Tech):</strong> MongoDB ідеальна для збереження динамічних JSON-атрибутів, а ElasticSearch — перевірений еталон для мілісекундного пошуку по 50+ млн товарів із підтримкою складної фасетної фільтрації.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Стратегія кешування</strong></td>
+<td style="text-align:left">Кошик (In-Memory)</td>
+<td style="text-align:left"><strong>Redis Enterprise</strong> (з CRDT)</td>
+<td style="text-align:left">Amazon DynamoDB, Memcached, Hazelcast</td>
+<td style="text-align:left"><strong>(Dark Horse):</strong> Замість простого Key-Value кешу використана елітна математична модель CRDT. Вона гарантує безконфліктне злиття кошиків з мобільного застосунку та Web навіть при тимчасовій втраті зв'язку між дата-центрами.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Обробка черг і подій</strong></td>
+<td style="text-align:left">Оркестратор Саги (Events)</td>
+<td style="text-align:left"><strong>Apache Kafka</strong> (Event Streaming)</td>
+<td style="text-align:left">RabbitMQ, AWS SQS</td>
+<td style="text-align:left"><strong>(Modern Standard):</strong> Де-факто стандарт для Event-Driven архітектур. Забезпечує патерн Saga Orchestration для розподілених транзакцій (Checkout) та гарантує надійний Event Sourcing при збоях.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Масштабування (Compute)</strong></td>
+<td style="text-align:left">Обчислювальний шар</td>
+<td style="text-align:left"><strong>Kubernetes</strong> (EKS / GKE) + Горизонтальне (HPA)</td>
+<td style="text-align:left">Вертикальне (Scale-up), AWS ECS</td>
+<td style="text-align:left"><strong>(Modern Standard):</strong> Для 10 млн DAU це єдиний шлях до стратегії Vendor Exit та Cell-based архітектури. K8s дозволяє миттєво додавати ноди під час пікових розпродажів (Hype Drops) і зменшувати їх для економії (FinOps).</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Сховище файлів (Blob)</strong></td>
+<td style="text-align:left">Сховище медіа (Object)</td>
+<td style="text-align:left"><strong>Amazon S3</strong> (Standard + WORM)</td>
+<td style="text-align:left">GCP Cloud Storage</td>
+<td style="text-align:left"><strong>(Boring Tech):</strong> Золотий стандарт індустрії. Патерн WORM (Write Once Read Many) забезпечує незмінність аудит-логів для комплаєнсу та безпеки (The Black Book).</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Моніторинг та логування</strong></td>
+<td style="text-align:left">Observability &amp; Tracing</td>
+<td style="text-align:left"><strong>OpenTelemetry + Jaeger</strong></td>
+<td style="text-align:left">Datadog (повністю)</td>
+<td style="text-align:left"><strong>(Rising Trend):</strong> Відмова від дорогого вендор-локу на користь відкритого стандарту. Дозволяє застосовувати Tail-based Sampling та економити до 90% інфраструктурного бюджету на зберіганні логів.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Комунікація сервісів</strong></td>
+<td style="text-align:left">Внутрішнє / Зовнішнє API</td>
+<td style="text-align:left"><strong>gRPC</strong> + <strong>GraphQL/REST</strong> (Зовнішня - BFF)</td>
+<td style="text-align:left">Тільки REST (JSON)</td>
+<td style="text-align:left"><strong>(Modern Hype):</strong> GraphQL рятує застосунки від Over-fetching (завантаження зайвих даних). Внутрішня комунікація через gRPC (Protobuf) швидша за REST у 7-10 разів і споживає менше ресурсів CPU.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Zero Trust &amp; Security</strong></td>
+<td style="text-align:left">Апаратна ізоляція (Data in Use)</td>
+<td style="text-align:left"><strong>AWS Nitro Enclaves / eBPF</strong></td>
+<td style="text-align:left">Класичні VM, AWS GuardDuty</td>
+<td style="text-align:left"><strong>(Elite Dark Horse):</strong> Рівень захисту FinTech та спецслужб. Апаратне шифрування RAM та перехоплення викликів ядра (Ghost Sharding). <em>Trade-off:</em> екстремально високий поріг входу для інженерів платформи.</td>
+</tr>
+</tbody>
+</table>
 </hr></div>
 </div>
 </div>
@@ -8425,7 +8517,7 @@ sequenceDiagram
 <p>Для вирішення цієї проблеми <code>Inventory Service</code> використовує комбінований підхід:</p>
 <ol>
 <li><strong>Попереднє відсікання в пам'яті (Redis INCR/DECR):</strong> Перш ніж транзакція Saga взагалі торкнеться реляційної бази даних, доступність залишку атомарно перевіряється в Redis. Якщо залишок у Redis дорівнює нулю, запит відхиляється за &lt;2 мс.</li>
-<li><strong>SKIP LOCKED у транзакційній БД:</strong> Для фінального семантичного блокування в CockroachDB/PostgreSQL використовується SQL-конструкція <code>SELECT ... FOR UPDATE SKIP LOCKED</code>. Якщо 1000 запитів прорвалися до бази одночасно, лише перший захопить блокування рядка. Інші 999 запитів не будуть ставати в мертву чергу (очікуючи зняття блокування), а миттєво отримають помилку і будуть перенаправлені Оркестратором у статус <code>OUT_OF_STOCK</code>, повертаючи клієнтам у <strong>мобільний застосунок</strong> швидку і чітку відповідь замість нескінченного зависання екрана завантаження.</li>
+<li><strong>SKIP LOCKED у транзакційній БД:</strong> Для фінального семантичного блокування в CockroachDB використовується SQL-конструкція <code>SELECT ... FOR UPDATE SKIP LOCKED</code>. Якщо 1000 запитів прорвалися до бази одночасно, лише перший захопить блокування рядка. Інші 999 запитів не будуть ставати в мертву чергу (очікуючи зняття блокування), а миттєво отримають помилку і будуть перенаправлені Оркестратором у статус <code>OUT_OF_STOCK</code>, повертаючи клієнтам у <strong>мобільний застосунок</strong> швидку і чітку відповідь замість нескінченного зависання екрана завантаження.</li>
 </ol>
 </hr></div>
 </div>
@@ -9095,7 +9187,7 @@ graph TD
 </ul>
 <p><strong>2. Оцінка зберігання даних (Storage Capacity):</strong></p>
 <ul>
-<li><em>Каталог товарів (ElasticSearch/PostgreSQL):</em> 50 млн товарів * 5 KB (метадані + текст) = <strong>~250 GB</strong> гарячих даних.</li>
+<li><em>Каталог товарів (ElasticSearch + MongoDB):</em> 50 млн товарів * 5 KB (метадані + текст) = <strong>~250 GB</strong> гарячих даних.</li>
 <li><em>Медіафайли (S3 Object Storage):</em> 50 млн товарів * 5 фотографій * 200 KB = <strong>~50 TB</strong> (плюс відеоогляди = <strong>~150 TB</strong> загального обсягу).</li>
 <li><em>Транзакції (Orders):</em> 100,000 транзакцій на годину в пік. При середньому показнику 500,000 замовлень на день * 2 KB (розмір JSON-замовлення) = <strong>1 GB/день</strong>. За 5 років зберігання транзакційне ядро (CockroachDB) накопичить лише <strong>~1.8 TB</strong> фінансових даних, що ідеально лягає в оперативну пам'ять кластера для надшвидких запитів.</li>
 </ul>
@@ -9186,7 +9278,7 @@ erDiagram
     }
 </pre></div><p><strong>Опис структур даних та вибір сховища:</strong></p>
 <ol>
-<li><strong>Сутність <code>USERS</code> (PostgreSQL / CockroachDB):</strong><ul>
+<li><strong>Сутність <code>USERS</code> (CockroachDB):</strong><ul>
 <li><em>Тип:</em> Реляційна (сувора консистентність).</li>
 <li><em>Особливості:</em> Поля з персональними даними (PII) зберігаються в зашифрованому вигляді. Поле <code>preferences</code> (JSONB) дозволяє гнучко додавати налаштування без зміни схеми (ALTER TABLE).</li>
 </ul>
@@ -9196,7 +9288,7 @@ erDiagram
 <li><em>Особливості:</em> Оскільки товари (смартфони, одяг) мають різні набори характеристик, реляційна таблиця створила б "розріджену" матрицю (Sparse Matrix). JSON-документи ідеально підходять для динамічного поля <code>attributes</code>.</li>
 </ul>
 </li>
-<li><strong>Сутність <code>CARTS</code> (Redis / DynamoDB):</strong><ul>
+<li><strong>Сутність <code>CARTS</code> (Redis Enterprise):</strong><ul>
 <li><em>Тип:</em> Key-Value (In-Memory або високошвидкісний диск).</li>
 <li><em>Особливості:</em> Кошик використовує структуру CRDT (Conflict-free Replicated Data Type) в полі <code>items</code> для уникнення втрати даних при одночасному додаванні товарів з Web-порталу та <strong>мобільного застосунку</strong>. Дані мають автоматичний TTL (Time-To-Live) на 30 днів для очищення "покинутих" кошиків.</li>
 </ul>
@@ -9278,7 +9370,7 @@ erDiagram
 </ul>
 </li>
 <li><strong>Ліцензії, SaaS та Обсервабільність — ~15% бюджету OPEX:</strong><ul>
-<li>Витрати на телеметрію (Datadog/Elasticsearch) для зберігання петабайтів логів (зменшено завдяки Tail-based Sampling).</li>
+<li>Витрати на телеметрію (Jaeger/Elasticsearch) для зберігання петабайтів логів (зменшено завдяки Tail-based Sampling).</li>
 <li>Enterprise-ліцензії: GitHub Enterprise, HashiCorp Vault, інструменти безпеки (WAF, Sift Fraud Engine).</li>
 </ul>
 </li>
